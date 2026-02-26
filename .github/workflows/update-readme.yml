@@ -1,0 +1,54 @@
+name: Update README
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    # Only on main branch
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      
+      - name: Fetch README
+        run: |
+          curl -s -H "Authorization: Bearer ${{ secrets.ACCESS_TOKEN }}" \
+            ${{ secrets.BACKEND_URL }}/api/readme -o README.md
+      
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if git diff --quiet README.md; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Commit with squash
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Get the last commit message
+          LAST_MSG=$(git log -1 --pretty=%B)
+          
+          # If last commit was an auto-update, amend it
+          if [[ "$LAST_MSG" == "docs: auto-update README" ]]; then
+            git add README.md
+            git commit --amend --no-edit --date="$(date)"
+            git push --force-with-lease
+          else
+            # Otherwise create new commit
+            git add README.md
+            git commit -m "docs: auto-update README"
+            git push
+          fi
